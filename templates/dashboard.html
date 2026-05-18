@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Server Configuration</title>
+    <!-- Google Fonts: Plus Jakarta Sans (UI) & JetBrains Mono (Code/Files/Terminal) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Apply custom premium fonts to Tailwind's utility system
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+        
+        /* Drag handle visual cues */
+        .resizer-v {
+            cursor: col-resize;
+            transition: background-color 0.2s;
+        }
+        .resizer-v:hover, .resizer-v.active {
+            background-color: #3b82f6 !important;
+        }
+        .resizer-h {
+            cursor: row-resize;
+            transition: background-color 0.2s;
+        }
+        .resizer-h:hover, .resizer-h.active {
+            background-color: #3b82f6 !important;
+        }
+
+        /* Prevent text selection during drag operations */
+        .dragging-active {
+            user-select: none !important;
+            -webkit-user-select: none !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 flex flex-col h-screen overflow-hidden font-sans">
+
+    <!-- TOP HEADER -->
+    <header class="bg-gray-900 border-b border-gray-800 p-4 flex flex-col md:flex-row justify-between items-center gap-4 shrink-0 shadow-lg">
+        
+        <!-- LEFT: BRAND & STATUS BADGE -->
+        <div class="flex items-center gap-4 shrink-0">
+            <div>
+                <h1 class="text-xl font-black tracking-wider text-green-400">💎⛏️ Minecraft Server Configuration</h1>
+                
+            </div>
+            <!-- Status Indicator -->
+            <div id="status-badge" class="px-3 py-1.5 rounded-full font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2 bg-gray-800 text-gray-400">
+                <span class="w-2.5 h-2.5 rounded-full bg-gray-500 animate-pulse"></span>
+                <span>Checking...</span>
+            </div>
+        </div>
+
+        <!-- CENTER: ACTIVE PLAYERS GRID (NO TRUNCATION, LARGE AVATARS) -->
+        <div class="flex-1 flex justify-center items-center min-w-0 max-w-full">
+            <div id="players-container" class="flex flex-row items-center justify-center gap-6 overflow-x-auto py-1 px-4 max-w-full">
+                <!-- Populated dynamically via JS -->
+                <p class="text-xs text-gray-500 font-mono uppercase tracking-widest">No Active Players</p>
+            </div>
+        </div>
+
+        <!-- RIGHT: LIFE CYCLE BUTTONS & LOGOUT (Defaulting to disabled style on cold start) -->
+        <div class="flex flex-wrap gap-2 items-center shrink-0">
+            <button id="btn-start" onclick="runControl('start')" class="bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200" disabled>
+                Start
+            </button>
+            <button id="btn-stop" onclick="runControl('stop')" class="bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200" disabled>
+                Stop
+            </button>
+            <button id="btn-restart" onclick="runControl('restart')" class="bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200" disabled>
+                Restart
+            </button>
+            <button id="btn-backup" onclick="runBackup()" class="bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200" disabled>
+                💾 Stop & Backup
+            </button>
+            <a href="/logout" class="bg-white hover:bg-gray-100 text-gray-900 border border-gray-200 px-4 py-2 rounded-lg text-sm font-semibold ml-2 shadow transition duration-200">
+                Logout  
+            </a>
+        </div>
+    </header>
+
+    <!-- MIDDLE: WORKSPACE (RESIZABLE SIDEBAR & EDITOR) -->
+    <div id="middle-container" class="flex flex-1 overflow-hidden">
+        
+        <!-- LEFT: FILE MANAGER (INITIAL WIDTH CONFIGURED TO 1/3 OF SCREEN [33.33%] WITH ADEQUATE CONSTRAINTS) -->
+        <div id="sidebar" class="bg-gray-900 flex flex-col gap-4 overflow-y-auto shrink-0 border-r border-gray-800 p-4" style="width: 33.333%; min-width: 320px; max-width: 1000px;">
+            
+            <!-- Mods Directory Header and Upload -->
+            <div class="border-b border-gray-800 pb-3">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-xs font-black uppercase tracking-wider text-gray-400">📂 Mods (JARs Only)</h2>
+                    <input type="file" id="mod-upload" accept=".jar" onchange="uploadMod()" class="hidden">
+                    <label for="mod-upload" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1 rounded text-xs cursor-pointer transition shadow">
+                        + Upload Mod
+                    </label>
+                </div>
+                <!-- Sized specifically to show exactly 6 entries with larger baseline font size -->
+                <ul id="mods-list" class="space-y-1.5 bg-gray-950 p-2.5 rounded-lg border border-gray-800 overflow-y-auto" style="max-height: 320px; min-height: 100px;">
+                    <!-- Loaded dynamically -->
+                </ul>
+            </div>
+
+            <!-- Root Configs Directory -->
+            <div>
+                <h2 class="text-xs font-black uppercase tracking-wider text-gray-400 mb-2">⚙️ Config Files</h2>
+                <ul id="configs-list" class="space-y-1.5 bg-gray-950 p-2.5 rounded-lg border border-gray-800 max-h-[24rem] overflow-y-auto">
+                    <!-- Loaded dynamically -->
+                </ul>
+            </div>
+        </div>
+
+        <!-- VERTICAL RESIZER -->
+        <div id="v-resizer" class="resizer-v w-1.5 bg-gray-800 hover:bg-blue-500 self-stretch shrink-0"></div>
+
+        <!-- RIGHT: CODE EDITOR -->
+        <div id="editor-container" class="flex-1 flex flex-col bg-gray-950 p-4 overflow-hidden">
+            <div class="flex justify-between items-center mb-2 shrink-0">
+                <span id="editor-filename" class="text-xs font-mono text-yellow-500 font-bold bg-yellow-500/10 px-2.5 py-1 rounded border border-yellow-500/20">
+                    Select a configuration file to inspect or edit...
+                </span>
+                <button id="save-btn" onclick="saveActiveFile()" class="bg-sky-600 hover:bg-sky-500 text-white px-5 py-1.5 rounded-lg font-bold text-sm hidden shadow transition duration-150 cursor-pointer">
+                    Save Changes
+                </button>
+            </div>
+            <textarea id="editor" 
+                      class="w-full flex-1 bg-gray-900 border border-gray-800 rounded-lg font-mono p-4 text-sm focus:outline-none focus:border-blue-500 text-gray-200 resize-none leading-relaxed" 
+                      placeholder="/* Select a config file from the left column to write updates in-browser */"
+                      disabled></textarea>
+        </div>
+    </div>
+
+    <!-- HORIZONTAL RESIZER -->
+    <div id="h-resizer" class="resizer-h h-1.5 bg-gray-800 hover:bg-blue-500 shrink-0"></div>
+
+    <!-- BOTTOM: PERSISTENT LIVE TERMINAL LOGS -->
+    <div id="logs-container" class="bg-black flex flex-col shrink-0" style="height: 220px; min-height: 100px; max-height: 500px;">
+        <div class="bg-gray-900 px-4 py-2 border-b border-gray-800 text-xs font-mono text-gray-400 flex justify-between items-center shrink-0">
+            <span class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                <span class="font-bold text-gray-300">Live Server Output (docker logs -f)</span>
+            </span>
+            <button onclick="document.getElementById('log-terminal').innerHTML = ''" class="text-gray-500 hover:text-white font-bold transition text-[10px] uppercase tracking-wider bg-gray-800 px-2 py-0.5 rounded border border-gray-700">
+                Clear Console
+            </button>
+        </div>
+        <!-- Log text configured with larger font-size (text-base) and JetBrains Mono rendering -->
+        <div id="log-terminal" class="p-4 overflow-y-auto font-mono text-base text-green-400 whitespace-pre-wrap flex-1 selection:bg-gray-800 leading-relaxed scroll-smooth tracking-wide">
+            Connecting stream tunnel...
+        </div>
+    </div>
+
+    <!-- CURSEFORGE SECURITY AUDIT MODAL (PINNED PORTAL LAYER) -->
+    <div id="scanner-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
+            
+            <!-- HEADER -->
+            <div class="flex items-center justify-between border-b border-gray-800 pb-3">
+                <h3 class="text-sm font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-emerald-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                    </svg>
+                    CurseForge Security Audit
+                </h3>
+                <button onclick="closeScannerModal()" class="text-gray-400 hover:text-white cursor-pointer font-bold text-sm transition">✕</button>
+            </div>
+
+            <!-- PIPELINE WORKFLOW STATUS -->
+            <div class="flex flex-col gap-3 font-mono text-xs border-b border-gray-800 pb-4">
+                <div id="scan-step-1" class="flex items-center justify-between text-gray-500">
+                    <span>1. Writing Temp File stream</span>
+                    <span class="status-icon">--</span>
+                </div>
+                <div id="scan-step-2" class="flex items-center justify-between text-gray-500">
+                    <span>2. Computing MurmurHash2 Hash</span>
+                    <span class="status-icon">--</span>
+                </div>
+                <div id="scan-step-3" class="flex items-center justify-between text-gray-500">
+                    <span>3. Fetching CurseForge Directory signature</span>
+                    <span class="status-icon">--</span>
+                </div>
+            </div>
+
+            <!-- DETAILED OUTPUT REPORT -->
+            <div id="scan-result-box" class="hidden rounded-xl p-4 border text-xs leading-relaxed max-h-56 overflow-y-auto transition duration-200">
+                <!-- Populated dynamically -->
+            </div>
+
+            <!-- CONTROL FOOTER -->
+            <button id="scanner-done-btn" onclick="closeScannerModal()" class="w-full py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider transition-all duration-150" disabled>
+                Awaiting Audit Pipeline...
+            </button>
+        </div>
+    </div>
+
+    <!-- STARTING SERVER PIPELINE LOADING MODAL -->
+    <div id="starting-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-900 border border-gray-800 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col items-center text-center gap-6">
+            
+            <!-- Glowing Rotating Loader Graphic -->
+            <div class="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center text-emerald-400 animate-pulse shadow-lg shadow-emerald-500/10">
+                <svg class="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+            
+            <!-- Subtitles -->
+            <div>
+                <h3 class="text-lg font-black tracking-wider text-emerald-400 uppercase">Starting Minecraft Server</h3>
+                <p id="starting-status-text" class="text-xs text-gray-400 font-mono mt-1">Initializing container lifecycle...</p>
+            </div>
+
+            <!-- Sleek Smooth Custom Progress Bar -->
+            <div class="w-full bg-gray-950 border border-gray-800 rounded-full h-3.5 overflow-hidden p-0.5">
+                <div id="starting-progress-bar" class="bg-gradient-to-r from-emerald-500 to-green-400 h-full rounded-full transition-all duration-300 ease-out" style="width: 0%;"></div>
+            </div>
+
+            <!-- Pipeline Lifecycle Steps -->
+            <div class="w-full text-left space-y-2 font-mono text-xs text-gray-500 border-t border-gray-800 pt-4">
+                <div id="start-step-1" class="flex justify-between items-center transition-all duration-150">
+                    <span>• Booting Docker Container...</span>
+                    <span class="step-badge text-gray-600 font-bold">PENDING</span>
+                </div>
+                <div id="start-step-2" class="flex justify-between items-center transition-all duration-150">
+                    <span>• Mounting world structures...</span>
+                    <span class="step-badge text-gray-600 font-bold">PENDING</span>
+                </div>
+                <div id="start-step-3" class="flex justify-between items-center transition-all duration-150">
+                    <span>• Allocating runtime JVM thread...</span>
+                    <span class="step-badge text-gray-600 font-bold">PENDING</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CODE CONTROLLER SCRIPT -->
+    <script>
+        let currentEditingPath = '';
+        let logsLoaded = false; // Track if the initial log stream payload has arrived
+
+        // API interaction wrapper
+        async function defAPI(url, data = {}) {
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                return await res.json();
+            } catch (e) {
+                console.error("API error", e);
+                return { status: 'error', output: e.toString() };
+            }
+        }
+
+        // Run container commands (Start, Stop, Restart)
+        async function runControl(action) {
+            if (action === 'start') {
+                triggerStartPipeline();
+                return;
+            }
+            const res = await defAPI(`/api/server/${action}`);
+            if (res.status === 'success') {
+                console.log(`Server control action sent: ${action}`);
+            } else {
+                alert(`Error executing control command: ${res.output || res.message}`);
+            }
+            updateServerStatus();
+        }
+
+        // Animated startup pipeline sequence
+        async function triggerStartPipeline() {
+            const modal = document.getElementById('starting-modal');
+            const progress = document.getElementById('starting-progress-bar');
+            const statusText = document.getElementById('starting-status-text');
+            const step1 = document.getElementById('start-step-1');
+            const step2 = document.getElementById('start-step-2');
+            const step3 = document.getElementById('start-step-3');
+
+            // Reset UI States
+            modal.classList.remove('hidden');
+            progress.style.width = '0%';
+            statusText.innerText = "Initializing container lifecycle...";
+            [step1, step2, step3].forEach(el => {
+                el.className = "flex justify-between items-center text-gray-500";
+                el.querySelector('.step-badge').innerText = "PENDING";
+                el.querySelector('.step-badge').className = "step-badge text-gray-600 font-bold";
+            });
+
+            // Fire and forget start execution on backend
+            const apiPromise = defAPI('/api/server/start');
+
+            const totalDuration = 4500; // 4.5 seconds starting countdown
+            const intervalTime = 100;
+            let elapsed = 0;
+
+            const updateInterval = setInterval(() => {
+                elapsed += intervalTime;
+                const percent = Math.min((elapsed / totalDuration) * 100, 100);
+                progress.style.width = `${percent}%`;
+
+                if (percent < 35) {
+                    statusText.innerText = "Spawning Docker daemon container lifecycle...";
+                    step1.className = "flex justify-between items-center text-yellow-500 font-bold";
+                    step1.querySelector('.step-badge').innerText = "IN PROGRESS";
+                    step1.querySelector('.step-badge').className = "step-badge text-yellow-500 font-bold animate-pulse";
+                } else if (percent >= 35 && percent < 70) {
+                    step1.className = "flex justify-between items-center text-emerald-400 font-bold";
+                    step1.querySelector('.step-badge').innerText = "DONE";
+                    step1.querySelector('.step-badge').className = "step-badge text-emerald-400 font-bold";
+
+                    statusText.innerText = "Mounting level database & mods system...";
+                    step2.className = "flex justify-between items-center text-yellow-500 font-bold";
+                    step2.querySelector('.step-badge').innerText = "IN PROGRESS";
+                    step2.querySelector('.step-badge').className = "step-badge text-yellow-500 font-bold animate-pulse";
+                } else if (percent >= 70 && percent < 100) {
+                    step2.className = "flex justify-between items-center text-emerald-400 font-bold";
+                    step2.querySelector('.step-badge').innerText = "DONE";
+                    step2.querySelector('.step-badge').className = "step-badge text-emerald-400 font-bold";
+
+                    statusText.innerText = "Initializing target JVM thread runtime environment...";
+                    step3.className = "flex justify-between items-center text-yellow-500 font-bold";
+                    step3.querySelector('.step-badge').innerText = "IN PROGRESS";
+                    step3.querySelector('.step-badge').className = "step-badge text-yellow-500 font-bold animate-pulse";
+                }
+
+                if (elapsed >= totalDuration) {
+                    clearInterval(updateInterval);
+                    step3.className = "flex justify-between items-center text-emerald-400 font-bold";
+                    step3.querySelector('.step-badge').innerText = "DONE";
+                    step3.querySelector('.step-badge').className = "step-badge text-emerald-400 font-bold";
+                    statusText.innerText = "Server is starting up!";
+
+                    setTimeout(async () => {
+                        modal.classList.add('hidden');
+                        await apiPromise; // resolve background start API
+                        updateServerStatus();
+                    }, 600);
+                }
+            }, intervalTime);
+        }
+
+        // Backup wrapper
+        async function runBackup() {
+            if (!confirm("Caution: This action will shut down the server, duplicate the 'world' folder, and reboot the container. Proceed?")) return;
+            const logBox = document.getElementById('log-terminal');
+            logBox.innerHTML += "\n[Panel Info] Initializing localized backup protocol...\n";
+            logBox.scrollTop = logBox.scrollHeight;
+            const res = await defAPI('/api/server/backup');
+            alert(res.output);
+            updateServerStatus();
+        }
+
+        // Fetch status, players and render appropriately
+        async function updateServerStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                const badge = document.getElementById('status-badge');
+                const btnStart = document.getElementById('btn-start');
+                const btnStop = document.getElementById('btn-stop');
+                const btnRestart = document.getElementById('btn-restart');
+                const btnBackup = document.getElementById('btn-backup');
+                
+                // Update Badge UI & Disable/Enable buttons depending on server power state
+                if (data.status === 'running') {
+                    badge.className = "px-3 py-1.5 rounded-full font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2 bg-emerald-900/40 text-emerald-400 border border-emerald-500/20";
+                    badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>ONLINE';
+                    
+                    // Start is inactive
+                    btnStart.className = "bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200";
+                    btnStart.disabled = true;
+
+                    // Others are active and brightly colored with professional hover effects and shadow glows
+                    btnStop.className = "bg-red-600 hover:bg-red-500 hover:shadow-lg hover:shadow-red-500/30 hover:scale-[1.03] active:scale-95 text-white px-4 py-2 rounded-lg font-bold text-sm shadow cursor-pointer transition-all duration-200";
+                    btnStop.disabled = false;
+                    
+                    btnRestart.className = "bg-yellow-600 hover:bg-yellow-500 hover:shadow-lg hover:shadow-yellow-500/30 hover:scale-[1.03] active:scale-95 text-white px-4 py-2 rounded-lg font-bold text-sm shadow cursor-pointer transition-all duration-200";
+                    btnRestart.disabled = false;
+                    
+                    btnBackup.className = "bg-blue-600 hover:bg-blue-500 hover:shadow-lg hover:shadow-blue-500/30 hover:scale-[1.03] active:scale-95 text-white px-4 py-2 rounded-lg font-bold text-sm shadow cursor-pointer transition-all duration-200";
+                    btnBackup.disabled = false;
+                    
+                } else if (data.status === 'restarting') {
+                    badge.className = "px-3 py-1.5 rounded-full font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2 bg-amber-900/40 text-amber-400 border border-amber-500/20";
+                    badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></span>RESTARTING';
+                    
+                    // All inactive during transitions
+                    [btnStart, btnStop, btnRestart, btnBackup].forEach(b => {
+                        b.className = "bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200";
+                        b.disabled = true;
+                    });
+                } else {
+                    // Offline / Exited / Stopped States
+                    badge.className = "px-3 py-1.5 rounded-full font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-2 bg-red-950 text-red-400 border border-red-500/20 animate-pulse";
+                    badge.innerHTML = '<span class="w-2.5 h-2.5 rounded-full bg-red-500"></span>OFFLINE (STOPPED)';
+                    
+                    // Start button visibility is strictly dependent on logs being ready
+                    if (logsLoaded) {
+                        btnStart.className = "bg-emerald-600 hover:bg-emerald-500 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.03] active:scale-95 text-white px-4 py-2 rounded-lg font-bold text-sm shadow cursor-pointer transition-all duration-200";
+                        btnStart.disabled = false;
+                    } else {
+                        btnStart.className = "bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200";
+                        btnStart.disabled = true;
+                    }
+
+                    // Rest are greyed out
+                    [btnStop, btnRestart, btnBackup].forEach(b => {
+                        b.className = "bg-gray-800 text-gray-500 px-4 py-2 rounded-lg font-bold text-sm border border-gray-700 cursor-not-allowed opacity-50 transition-all duration-200";
+                        b.disabled = true;
+                    });
+                }
+
+                // Render active players (Centered, Huge Avatars, No Ellipsis)
+                const playersContainer = document.getElementById('players-container');
+                if (data.status === 'running' && data.players && data.players.length > 0) {
+                    playersContainer.innerHTML = data.players.map(player => `
+                        <div class="flex flex-col items-center justify-center shrink-0 max-w-[140px] text-center p-1.5 bg-gray-900/60 rounded-xl border border-gray-800 shadow-inner">
+                            <!-- Avatar using Minotar (serving 128px helm-style layout). Crisp rendering forced. -->
+                            <img src="https://minotar.net/helm/${player}/128" 
+                                 class="w-20 h-20 rounded-lg shadow-md border border-gray-700 bg-gray-950 transition-transform duration-200 hover:scale-110" 
+                                 style="image-rendering: pixelated; image-rendering: crisp-edges;" 
+                                 alt="${player}"
+                                 onerror="this.src='https://minotar.net/helm/MHF_Question/128';">
+                            <!-- No ellipsis wrapper block -->
+                            <span class="mt-2 text-sm font-black text-gray-200 break-all select-all whitespace-normal leading-tight w-full max-w-[128px]">
+                                ${player}
+                            </span>
+                        </div>
+                    `).join('');
+                } else if (data.status !== 'running') {
+                    playersContainer.innerHTML = '<span class="text-xs text-red-500 font-mono font-bold uppercase tracking-wider">Server is offline</span>';
+                } else {
+                    playersContainer.innerHTML = '<span class="text-xs text-gray-500 font-mono uppercase tracking-widest">No Active Players</span>';
+                }
+            } catch (e) {
+                console.error("Failed status updates", e);
+            }
+        }
+
+        // File list generators with larger fonts (text-base) and JetBrains Mono rendering
+        async function loadFileLists() {
+            // Load mods list (Custom Button Elements with SVGs)
+            try {
+                const mods = await (await fetch('/api/files/list?dir=mods')).json();
+                const mList = document.getElementById('mods-list');
+                mList.innerHTML = mods.map(f => `
+                    <li class="flex justify-between items-center gap-4 p-2 hover:bg-gray-900 rounded-md font-mono text-base border border-transparent hover:border-gray-800 transition">
+                        <span class="break-all text-gray-300 font-bold">${f.name}</span>
+                        <div class="flex gap-2 shrink-0 text-xs font-sans">
+                            <!-- Styled Rename Button -->
+                            <button onclick="renameFile('${f.path.replace(/'/g, "\\'")}', '${f.name.replace(/'/g, "\\'")}')" 
+                                    class="bg-blue-950/40 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-900/50 hover:border-blue-500 px-2.5 py-1 rounded font-semibold transition duration-150 cursor-pointer flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                Rename
+                            </button>
+                            <!-- Styled Delete Button -->
+                            <button onclick="deleteFile('${f.path.replace(/'/g, "\\'")}')" 
+                                    class="bg-red-950/40 text-red-400 hover:bg-red-600 hover:text-white border border-red-900/50 hover:border-red-500 px-2.5 py-1 rounded font-semibold transition duration-150 cursor-pointer flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                Delete
+                            </button>
+                        </div>
+                    </li>
+                `).join('') || '<span class="text-gray-500 p-1 block text-xs italic">No mods inside mods/ folder</span>';
+            } catch (e) {
+                console.error("Error loading mods", e);
+            }
+
+            // Load configs list (Custom Button Elements with SVGs)
+            try {
+                const configs = await (await fetch('/api/files/list?dir=')).json();
+                const cList = document.getElementById('configs-list');
+                cList.innerHTML = configs.map(f => `
+                    <li class="flex justify-between items-center gap-4 p-2 hover:bg-gray-900 rounded-md font-mono text-base border border-transparent hover:border-gray-800 transition">
+                        <span onclick="openFile('${f.path.replace(/'/g, "\\'")}')" class="cursor-pointer text-sky-400 hover:text-sky-300 hover:underline break-all font-bold">${f.name}</span>
+                        <!-- Styled Delete Button -->
+                        <button onclick="deleteFile('${f.path.replace(/'/g, "\\'")}')" 
+                                class="bg-red-950/40 text-red-400 hover:bg-red-600 hover:text-white border border-red-900/50 hover:border-red-500 px-2.5 py-1 rounded text-xs font-sans font-semibold transition duration-150 cursor-pointer flex items-center gap-1 shrink-0">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            Delete
+                        </button>
+                    </li>
+                `).join('') || '<span class="text-gray-500 p-1 block text-xs italic">No configurations inside root data</span>';
+            } catch (e) {
+                console.error("Error loading configs", e);
+            }
+        }
+
+        // Editor operations
+        async function openFile(path) {
+            const res = await (await fetch(`/api/files/view?path=${encodeURIComponent(path)}`)).json();
+            currentEditingPath = path;
+            document.getElementById('editor-filename').innerText = path;
+            const editor = document.getElementById('editor');
+            editor.value = res.content;
+            editor.removeAttribute('disabled');
+            document.getElementById('save-btn').classList.remove('hidden');
+        }
+
+        async function saveActiveFile() {
+            if(!currentEditingPath) return;
+            const content = document.getElementById('editor').value;
+            const res = await defAPI('/api/files/save', {path: currentEditingPath, content: content});
+            if(res.status === 'success') {
+                alert('Success: Configuration changes committed securely.');
+            } else {
+                alert(`Error saving configuration: ${res.error}`);
+            }
+        }
+
+        // ENFORCED SECURITY SCANNER UPLOAD WORKFLOW
+        async function uploadMod() {
+            const fileInput = document.getElementById('mod-upload');
+            if(!fileInput.files.length) return;
+            
+            const file = fileInput.files[0];
+            if (!file.name.toLowerCase().endsWith('.jar')) {
+                alert('Error: This admin panel strictly filters file uploads to executable Minecraft Java archives (.jar) only.');
+                fileInput.value = '';
+                return;
+            }
+
+            // Bring up CurseForge Security Audit modal overlay
+            const modal = document.getElementById('scanner-modal');
+            modal.classList.remove('hidden');
+
+            const s1 = document.getElementById('scan-step-1');
+            const s2 = document.getElementById('scan-step-2');
+            const s3 = document.getElementById('scan-step-3');
+            const resultBox = document.getElementById('scan-result-box');
+            const doneBtn = document.getElementById('scanner-done-btn');
+
+            // Reset UI States
+            resultBox.classList.add('hidden');
+            doneBtn.setAttribute('disabled', 'true');
+            doneBtn.className = "w-full py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-gray-800 text-gray-500 cursor-not-allowed";
+            doneBtn.innerText = "Awaiting Audit Pipeline...";
+
+            const setStepLoading = (el) => {
+                el.className = "flex items-center justify-between text-yellow-400 font-bold";
+                el.querySelector('.status-icon').innerHTML = `<svg class="animate-spin h-4 w-4 text-yellow-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+            };
+
+            const setStepSuccess = (el) => {
+                el.className = "flex items-center justify-between text-emerald-400 font-bold";
+                el.querySelector('.status-icon').innerHTML = `<svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>`;
+            };
+
+            const setStepFailed = (el) => {
+                el.className = "flex items-center justify-between text-red-500 font-bold";
+                el.querySelector('.status-icon').innerHTML = `<svg class="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+            };
+
+            const setStepPending = (el) => {
+                el.className = "flex items-center justify-between text-gray-600";
+                el.querySelector('.status-icon').innerText = "--";
+            };
+
+            // Trigger Step 1: Writing file Stream
+            setStepLoading(s1);
+            setStepPending(s2);
+            setStepPending(s3);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/files/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    // Step 1 Success
+                    setStepSuccess(s1);
+                    
+                    // Trigger Step 2: MurmurHash Generation
+                    setStepLoading(s2);
+                    await new Promise(r => setTimeout(r, 600)); // smooth visual transition
+                    setStepSuccess(s2);
+
+                    // Trigger Step 3: API matching
+                    setStepLoading(s3);
+                    await new Promise(r => setTimeout(r, 800)); // smooth visual transition
+                    setStepSuccess(s3);
+
+                    // Build Success Report
+                    resultBox.className = "block mt-2 p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-400 text-xs font-mono leading-relaxed space-y-1.5 shadow-inner";
+                    resultBox.innerHTML = `
+                        <div class="text-sm font-black text-emerald-300 border-b border-emerald-800/50 pb-1.5 mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+                            <svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.9c.725-.423 1.56-.696 2.457-.799a4.957 4.957 0 011.082-.023c.3.024.597.067.887.13a5.011 5.011 0 011.512.637c.307.195.586.425.83.684l.65.69.65-.69a4.938 4.938 0 011.66-1.19c.355-.164.729-.29 1.116-.375a4.978 4.978 0 012.396.11c.717.21 1.373.57 1.933 1.047a5.004 5.004 0 011.396 2.1c.21.62.316 1.267.316 1.914 0 1.268-.396 2.457-1.077 3.444A9.155 9.155 0 0112 16.12a9.153 9.153 0 01-6.44-3.328A6.805 6.805 0 014.5 9.35c0-.647.106-1.294.316-1.914a5.01 5.01 0 011.396-2.1c.365-.31.776-.566 1.22-.764l1.116-.375z" clip-rule="evenodd"></path></svg>
+                            Verified CurseForge Integrity
+                        </div>
+                        <div><span class="text-gray-500 font-bold">Mod ID:</span> ${data.mod_info.modId}</div>
+                        <div><span class="text-gray-500 font-bold">File ID:</span> ${data.mod_info.fileId}</div>
+                        <div><span class="text-gray-500 font-bold">Display Name:</span> ${data.mod_info.displayName}</div>
+                        <div><span class="text-gray-500 font-bold">Filename:</span> ${data.mod_info.fileName}</div>
+                        <div><span class="text-gray-500 font-bold">Fingerprint:</span> <span class="text-yellow-400 font-bold">${data.fingerprint}</span></div>
+                    `;
+
+                    doneBtn.removeAttribute('disabled');
+                    doneBtn.className = "w-full py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white shadow-md cursor-pointer transition";
+                    doneBtn.innerText = "Commit Mod to Server";
+
+                } else {
+                    // Pipeline block / API failed
+                    setStepFailed(s1);
+                    if (data.status === 'unverified') {
+                        setStepSuccess(s1);
+                        setStepSuccess(s2);
+                        setStepFailed(s3);
+                    } else {
+                        setStepFailed(s2);
+                        setStepFailed(s3);
+                    }
+
+                    // Display Safety Denied Card
+                    resultBox.className = "block mt-2 p-4 rounded-xl bg-red-950/40 border border-red-800 text-red-400 text-xs font-mono leading-relaxed space-y-2 shadow-inner";
+                    resultBox.innerHTML = `
+                        <div class="text-sm font-black text-red-300 border-b border-red-800/50 pb-1.5 flex items-center gap-1.5 uppercase tracking-wide">
+                            🛑 Audit Block Triggered
+                        </div>
+                        <div class="text-gray-200 font-bold">Bytecode Rejected: Unrecognized Binary</div>
+                        <p class="text-gray-400 text-[11px] leading-relaxed">
+                            This Java Mod failed to match verified hashes in the CurseForge directory.
+                            Unrecognized JARs are restricted to prevent remote code execution. The file has been wiped from local storage.
+                        </p>
+                        ${data.fingerprint ? `<div><span class="text-gray-500 font-bold">Computed Fingerprint:</span> <span class="text-yellow-400 font-bold">${data.fingerprint}</span></div>` : ''}
+                        ${data.error ? `<div class="text-[11px] text-gray-400"><span class="text-red-500">Error:</span> ${data.error}</div>` : ''}
+                    `;
+
+                    doneBtn.removeAttribute('disabled');
+                    doneBtn.className = "w-full py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-red-600 hover:bg-red-500 text-white shadow-md cursor-pointer transition";
+                    doneBtn.innerText = "Acknowledge Safety Log";
+                }
+            } catch (err) {
+                setStepFailed(s1);
+                setStepFailed(s2);
+                setStepFailed(s3);
+
+                resultBox.className = "block mt-2 p-4 rounded-xl bg-red-950/40 border border-red-800 text-red-400 text-xs font-mono leading-relaxed shadow-inner";
+                resultBox.innerHTML = `
+                    <div class="font-bold text-red-300 mb-1">Upload Pipeline Exception</div>
+                    <p class="text-gray-400 text-[11px]">${err.toString()}</p>
+                `;
+
+                doneBtn.removeAttribute('disabled');
+                doneBtn.className = "w-full py-2.5 rounded-lg font-bold text-xs uppercase tracking-wider bg-gray-800 hover:bg-gray-700 text-white cursor-pointer transition";
+                doneBtn.innerText = "Close Audit Box";
+            }
+
+            fileInput.value = '';
+            loadFileLists();
+        }
+
+        // DESTRUCTION / TRASH METHOD
+        async function deleteFile(path) {
+            if(!confirm(`Are you absolutely certain you want to permanently delete: ${path}?`)) return;
+            const res = await defAPI('/api/files/delete', {path: path});
+            if(res.status === 'success') {
+                if(currentEditingPath === path) {
+                    document.getElementById('editor').value = '';
+                    document.getElementById('editor').setAttribute('disabled', 'true');
+                    document.getElementById('editor-filename').innerText = 'Select a configuration file to inspect or edit...';
+                    document.getElementById('save-btn').classList.add('hidden');
+                }
+                loadFileLists();
+            } else {
+                alert(`Error deleting file: ${res.error || 'Check write parameters.'}`);
+            }
+        }
+
+        async function renameFile(oldPath, oldName) {
+            const newName = prompt(`Enter new filename for ${oldName}:`, oldName);
+            if(!newName || newName === oldName) return;
+            const res = await defAPI('/api/files/rename', {old_path: oldPath, new_name: newName});
+            if(res.status === 'success') loadFileLists();
+        }
+
+        function closeScannerModal() {
+            document.getElementById('scanner-modal').classList.add('hidden');
+        }
+
+        // Live stream initialization
+        function startLogStream() {
+            const logBox = document.getElementById('log-terminal');
+            const source = new EventSource('/api/logs');
+            
+            // Safe fallback: if container has 0 logs and no message is received in 1.5s, unlock button
+            const fallbackTimeout = setTimeout(() => {
+                if (!logsLoaded) {
+                    logsLoaded = true;
+                    updateServerStatus();
+                }
+            }, 1500);
+            
+            source.onmessage = function(event) {
+                clearTimeout(fallbackTimeout);
+                // Strip control characters and output
+                logBox.innerHTML += event.data + "\n";
+                logBox.scrollTop = logBox.scrollHeight;
+                
+                if (!logsLoaded) {
+                    logsLoaded = true;
+                    updateServerStatus(); // Re-evaluate button states now that logs are verified loaded
+                }
+            };
+
+            source.onerror = function() {
+                logBox.innerHTML += "\n[Panel Diagnostic] Live log connection dropped. Attempting to restream...\n";
+            };
+        }
+
+        // Explicit Global Window Scope Expose (Fixes ReferenceErrors universally)
+        window.defAPI = defAPI;
+        window.runControl = runControl;
+        window.runBackup = runBackup;
+        window.updateServerStatus = updateServerStatus;
+        window.loadFileLists = loadFileLists;
+        window.openFile = openFile;
+        window.saveActiveFile = saveActiveFile;
+        window.uploadMod = uploadMod;
+        window.deleteFile = deleteFile;
+        window.renameFile = renameFile;
+        window.closeScannerModal = closeScannerModal;
+
+        // RESIZING SYSTEM ARCHITECTURE
+        const sidebar = document.getElementById('sidebar');
+        const editorContainer = document.getElementById('editor-container');
+        const logsContainer = document.getElementById('logs-container');
+        
+        const vResizer = document.getElementById('v-resizer');
+        const hResizer = document.getElementById('h-resizer');
+
+        // Drag handlers for vertical split
+        vResizer.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            document.body.classList.add('dragging-active');
+            vResizer.classList.add('active');
+            
+            function onMouseMove(moveEvent) {
+                const newWidth = moveEvent.clientX;
+                // Boundaries (adjusted from 850 to 1000 for the increased default size compatibility)
+                if (newWidth > 260 && newWidth < 1000) {
+                    sidebar.style.width = newWidth + 'px';
+                }
+            }
+            
+            function onMouseUp() {
+                document.body.classList.remove('dragging-active');
+                vResizer.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        // Touch support for vertical split
+        vResizer.addEventListener('touchstart', function(e) {
+            document.body.classList.add('dragging-active');
+            vResizer.classList.add('active');
+            
+            function onTouchMove(moveEvent) {
+                const newWidth = moveEvent.touches[0].clientX;
+                if (newWidth > 260 && newWidth < 1000) {
+                    sidebar.style.width = newWidth + 'px';
+                }
+            }
+            
+            function onTouchEnd() {
+                document.body.classList.remove('dragging-active');
+                vResizer.classList.remove('active');
+                document.removeEventListener('touchmove', onTouchMove);
+                document.removeEventListener('touchend', onTouchEnd);
+            }
+            
+            document.addEventListener('touchmove', onTouchMove);
+            document.addEventListener('touchend', onTouchEnd);
+        });
+
+        // Drag handlers for horizontal split
+        hResizer.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            document.body.classList.add('dragging-active');
+            hResizer.classList.add('active');
+            
+            function onMouseMove(moveEvent) {
+                const newHeight = window.innerHeight - moveEvent.clientY;
+                if (newHeight > 100 && newHeight < 500) {
+                    logsContainer.style.height = newHeight + 'px';
+                }
+            }
+            
+            function onMouseUp() {
+                document.body.classList.remove('dragging-active');
+                hResizer.classList.remove('active');
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        // Touch support for horizontal split
+        hResizer.addEventListener('touchstart', function(e) {
+            document.body.classList.add('dragging-active');
+            hResizer.classList.add('active');
+            
+            function onTouchMove(moveEvent) {
+                const newHeight = window.innerHeight - moveEvent.touches[0].clientY;
+                if (newHeight > 100 && newHeight < 500) {
+                    logsContainer.style.height = newHeight + 'px';
+                }
+            }
+            
+            function onTouchEnd() {
+                document.body.classList.remove('dragging-active');
+                hResizer.classList.remove('active');
+                document.removeEventListener('touchmove', onTouchMove);
+                document.removeEventListener('touchend', onTouchEnd);
+            }
+            
+            document.addEventListener('touchmove', onTouchMove);
+            document.addEventListener('touchend', onTouchEnd);
+        });
+
+        // On Load Initialization
+        window.onload = () => {
+            loadFileLists();
+            updateServerStatus();
+            startLogStream();
+            
+            // Poll for server updates & active players every 4.5 seconds
+            setInterval(updateServerStatus, 4500);
+        };
+    </script>
+</body>
+</html>
