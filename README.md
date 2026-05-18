@@ -52,10 +52,10 @@ To expose the web application safely without altering local router security prof
 ##  Installation & Setup
 
 ### 1. Clone the Architecture
-
+```
 git clone [https://github.com/0xtosh/minecraft-manager.git](https://github.com/0xtosh/minecraft-manager.git)
 cd minecraft-manager
-
+```
 
 ### 2. Install Required Dependencies
 
