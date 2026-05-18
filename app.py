@@ -10,6 +10,7 @@ import json
 import secrets
 import pyotp
 import qrcode
+import logging
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, flash, make_response
 from itsdangerous import URLSafeTimedSerializer
@@ -21,11 +22,11 @@ load_dotenv()
 
 app = Flask(__name__)
 # Configured a stable key signature to persist validation across application reloads
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "somekeyhere-replace-this")
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "your-key-here")
 
 # --- CONFIGURATION ---
-MC_DIR = "/usr/minecraft/data"  # Path where 'world', 'mods', etc., live on the host
-CONTAINER_NAME = "minecraft" # docker name for your minecraft server
+MC_DIR = "/usr/minecraft.dev/data"  # Path where 'world', 'mods', etc., live on the host
+CONTAINER_NAME = "mc-server"
 CURSEFORGE_API_KEY = os.getenv("CURSEFORGE_API_KEY")
 
 # OTP Specific Configuration
@@ -37,10 +38,30 @@ SERVER_NAME = "Minecraft Manager"
 API_URL = "https://api.curseforge.com/v1/fingerprints"
 # ---------------------
 
+# Configure dedicated login attempts logger
+LOG_FILE_PATH = "login_attempts.log"
+logger = logging.getLogger("login_security")
+logger.setLevel(logging.INFO)
+
+# Avoid adding multiple handlers if the file is reloaded in Flask debug mode
+if not logger.handlers:
+    file_handler = logging.FileHandler(LOG_FILE_PATH)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
 # Regular expression to clean up terminal formatting escape codes (ANSI colors)
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 # --- HELPER FUNCTIONS ---
+
+def get_client_ip():
+    """Retrieves the actual client IP, bypassing reverse SSH tunnel loopbacks."""
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    if x_forwarded_for:
+        # X-Forwarded-For can contain a list of hops: "client, proxy1, proxy2"
+        return x_forwarded_for.split(',')[0].strip()
+    return request.headers.get('X-Real-IP', request.remote_addr)
 
 def login_required(f):
     def wrapper(*args, **kwargs):
@@ -156,9 +177,11 @@ def email_stage():
         email = request.form.get('email', '').strip().lower()
         
         if not email or not is_whitelisted(email):
+            logger.warning(f"Failed email verification: Attempt with non-whitelisted email '{email}' from IP: {get_client_ip()}")
             flash("Access denied or invalid input.", "error")
             return redirect(url_for('email_stage'))
         
+        logger.info(f"Successful email whitelist match: '{email}' from IP: {get_client_ip()}")
         session['auth_email'] = email
 
         # --- DEVICE TRUST VERIFICATION PIPELINE ---
@@ -176,10 +199,12 @@ def email_stage():
                     session['logged_in'] = True
                     session['user_email'] = email
                     session.pop('auth_email', None)
+                    logger.info(f"Successful login via Trusted Device bypass: '{email}' from IP: {get_client_ip()}")
                     flash("Welcome back! Trusted workstation confirmed.", "success")
                     return redirect(url_for('dashboard'))
             except Exception:
                 # Cookie is either tampered, forged, or expired: proceed securely with OTP challenge
+                logger.warning(f"Failed Trusted Device bypass attempt: '{email}' (cookie was invalid or expired) from IP: {get_client_ip()}")
                 pass
 
         user_secrets = load_user_secrets()
@@ -207,6 +232,7 @@ def setup_stage():
         # Retrieve the original secret generated during the initial page load
         secret = session.get('pending_secret')
         if not secret:
+            logger.warning(f"Failed MFA setup session: Pending secret was missing from session for '{email}' from IP: {get_client_ip()}")
             flash("Session expired. Please restart the login process.", "error")
             return redirect(url_for('email_stage'))
             
@@ -218,6 +244,7 @@ def setup_stage():
             session.pop('pending_secret', None)  # Clear temporary setup key
             session['logged_in'] = True          # Log the user into the configurator panel
             session['user_email'] = email
+            logger.info(f"Successful MFA setup and paired: '{email}' with verification code {submitted_code} from IP: {get_client_ip()}")
             flash("Authenticator paired successfully!", "success")
 
             response = make_response(redirect(url_for('dashboard')))
@@ -230,9 +257,11 @@ def setup_stage():
                 cookie_name = f"trusted_device_{cookie_hash}"
                 # Expire in exactly 30 Days (2,592,000 seconds) scoped to path='/' globally
                 response.set_cookie(cookie_name, token, max_age=2592000, httponly=True, secure=False, path='/')
+                logger.info(f"User '{email}' chose to trust device from IP: {get_client_ip()}")
                 
             return response
         else:
+            logger.warning(f"Failed MFA setup verification: '{email}' entered invalid setup code '{submitted_code}' from IP: {get_client_ip()}")
             flash("Invalid code. Please try again with the same QR code.", "error")
             # Re-render UI with the persistent key so they don't have to re-scan
             provisioning_uri = totp.provisioning_uri(name=email, issuer_name=SERVER_NAME)
@@ -270,6 +299,7 @@ def verify_stage():
             session.pop('auth_email', None)  # Clear login tracking state upon success
             session['logged_in'] = True      # Grant complete system access
             session['user_email'] = email
+            logger.info(f"Successful MFA login: '{email}' verified with code {submitted_code} from IP: {get_client_ip()}")
 
             response = make_response(redirect(url_for('dashboard')))
 
@@ -281,15 +311,19 @@ def verify_stage():
                 cookie_name = f"trusted_device_{cookie_hash}"
                 # Expire in exactly 30 Days (2,592,000 seconds) scoped to path='/' globally
                 response.set_cookie(cookie_name, token, max_age=2592000, httponly=True, secure=False, path='/')
+                logger.info(f"User '{email}' chose to trust device from IP: {get_client_ip()}")
                 
             return response
         else:
+            logger.warning(f"Failed MFA login verification: '{email}' entered invalid code '{submitted_code}' from IP: {get_client_ip()}")
             flash("Invalid code. Please try again.", "error")
             
     return render_template('verify.html')
 
 @app.route('/logout')
 def logout():
+    email = session.get('user_email', 'unknown')
+    logger.info(f"User logged out: '{email}' from IP: {get_client_ip()}")
     session.clear()  # Wipes session payload completely to log the user out
     return redirect(url_for('email_stage'))
 
