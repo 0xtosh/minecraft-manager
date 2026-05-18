@@ -2,9 +2,13 @@
 
 A lightweight, web-based management panel for custom Minecraft server administration to allow mod and server administration without giving operating system access. 
 
+<img src="img/3.png">
+
 ---
 
 ## Features
+
+<img src="img/1.png"><img src="img/2.png">
 
 ### Multi-Stage Security Pipeline
 * **Email Whitelisting:** Restricts access explicitly to emails pre-defined in `whitelist.txt`.
@@ -76,11 +80,11 @@ sudo usermod -aG mc-managers $USER
 sudo usermod -aG mc-managers minecraft
 
 # Set group ownership on your Minecraft data directory
-sudo chown -R :mc-managers /opt/minecraft/data
+sudo chown -R :mc-managers /usr/minecraft/data
 
 # Ensure the group has read, write, and execute permissions on directories
-sudo chmod -R 775 /opt/minecraft/data
-sudo chmod g+s /opt/minecraft/data
+sudo chmod -R 775 /usr/minecraft/data
+sudo chmod g+s /usr/minecraft/data
 ```
 
 Note: Ensure your Flask application execution user account also belongs to the local machine's docker system permissions group to permit seamless API sub-process control loops.
@@ -97,7 +101,7 @@ CURSEFORGE_API_KEY=your_official_curseforge_production_api_key_here
 
 Open app.py and modify the system config constants to match your host layout:
 ```
-MC_DIR = "/opt/minecraft/data"  # Absolute path to your server's data mount folder
+MC_DIR = "/usr/minecraft/data"  # Absolute path to your server's data mount folder
 CONTAINER_NAME = "minecraft"   # Exact name assigned to your Docker minecraft container
 ```
 
